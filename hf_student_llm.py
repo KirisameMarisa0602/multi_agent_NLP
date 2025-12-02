@@ -76,7 +76,7 @@ else:
             self.base_model = base_model
             self.lora_dir = lora_dir or ""
             # 为了控制显存占用，限制单次生成长度
-            self.max_new_tokens = min(max_new_tokens, 64)
+            self.max_new_tokens = min(max_new_tokens, 512)
             self.model_name = base_model
 
             # 是否启用 4bit 量化（仅在 GPU + bitsandbytes 可用时生效）
@@ -122,12 +122,14 @@ else:
                 if device_map:
                     load_kwargs["device_map"] = device_map
 
+            print(f"🔄 Loading base model: {base_model}...")
             base = AutoModelForCausalLM.from_pretrained(base_model, **load_kwargs)
 
             if self.lora_dir and os.path.exists(self.lora_dir) and _PEFT_AVAILABLE:
                 try:
+                    print(f"🔄 Loading LoRA adapter: {self.lora_dir}...")
                     self.model = PeftModel.from_pretrained(base, self.lora_dir)
-                    print(f"✅ Loaded LoRA adapters from {self.lora_dir}")
+                    print(f"✅ LoRA adapters loaded successfully.")
                 except Exception as e:
                     print(f"⚠️ Failed to load LoRA adapters from {self.lora_dir}: {e}. Using base model.")
                     self.model = base
@@ -146,30 +148,51 @@ else:
                     pass
             self.model.eval()
 
-        def _format_prompt(self, obj: Union[Dict, str]) -> str:
-            if isinstance(obj, dict):
-                # flatten dict into readable text; avoid complex chat formatting here
-                return "\n".join(f"{k}: {v}" for k, v in obj.items())
-            return str(obj)
-
         def invoke(self, prompt: Union[Dict, str]) -> str:
-            """执行一次推理调用，尽量控制显存占用并避免无效的采样参数组合。"""
-            text = self._format_prompt(prompt)
+            """执行一次推理调用，使用 Chat 模板以确保指令遵循。"""
+            
+            # 1. 解析输入内容
+            content = ""
+            if isinstance(prompt, dict):
+                content = "\n".join(f"{k}: {v}" for k, v in prompt.items())
+            else:
+                content = str(prompt)
+
+            # 2. 构建符合 Chat 模型的对话历史
+            # 增加 System Prompt 强制规定输出格式，防止提取失败
+            messages = [
+                {"role": "system", "content": "你是一个学术写作优化助手。请严格遵守格式要求，输出 **优化版本：** 和 **修改说明：**。"},
+                {"role": "user", "content": content}
+            ]
+
+            # 3. 使用 Tokenizer 的 apply_chat_template 进行格式化
+            # 这会添加 <|im_start|>system...<|im_start|>user 等特殊 token
+            text = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
+
             inputs = self.tokenizer(text, return_tensors="pt")
+            
             if torch:
                 try:
                     # 在 4bit + device_map 模式下，inputs 仍然需要放到主设备或相应 CUDA
                     inputs = inputs.to(self.device) if not self.load_in_4bit else inputs.to("cuda" if torch.cuda.is_available() else self.device)
                 except Exception:
                     pass
+                
                 with torch.no_grad():
                     output_ids = self.model.generate(
                         **inputs,
                         max_new_tokens=self.max_new_tokens,
-                        do_sample=False,
+                        do_sample=True,      # 开启采样以获得更自然的改写
+                        temperature=0.3,     # 低温度保证学术严谨性
+                        top_p=0.9,
                         eos_token_id=self.tokenizer.eos_token_id,
                         pad_token_id=self.tokenizer.pad_token_id,
                     )
+                # 只保留新生成的部分
                 gen_ids = output_ids[0][inputs["input_ids"].shape[1]:]
                 return self.tokenizer.decode(gen_ids, skip_special_tokens=True)
             else:
