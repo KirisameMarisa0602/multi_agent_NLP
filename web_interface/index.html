@@ -27,9 +27,7 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" data-tab="data-synthesis">
-                            <i class="bi bi-database"></i> 数据合成
-                        </a>
+                        <!-- 数据合成功能已移除 -->
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" data-tab="evaluation">
@@ -319,65 +317,7 @@
         </div>
 
         <!-- 数据合成模块 -->
-        <div id="data-synthesis" class="tab-content" style="display: none;">
-            <div class="row">
-                <div class="col-lg-8">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="bi bi-database"></i> 数据合成</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <label for="seedTexts" class="form-label">种子文本（每行一个）：</label>
-                                <textarea class="form-control" id="seedTexts" rows="8" 
-                                          placeholder="请输入种子文本，每行一个...&#10;例如：&#10;本研究探讨了基于多智能体的文本优化框架，初步实验尚不充分。&#10;我们提出一个简单的管线，但方法部分缺乏清晰的因果论证。"></textarea>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="synthRequirements" class="form-label">合成需求：</label>
-                                <input type="text" class="form-control" id="synthRequirements" 
-                                       value="学术表达提升,结构清晰,可读性增强" 
-                                       placeholder="用逗号分隔...">
-                            </div>
-
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label for="synthRounds" class="form-label">协作轮次：</label>
-                                    <input type="number" class="form-control" id="synthRounds" value="3" min="1" max="10">
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="outputPath" class="form-label">输出文件名：</label>
-                                    <input type="text" class="form-control" id="outputPath" 
-                                           placeholder="留空自动生成时间戳文件名">
-                                </div>
-                            </div>
-
-                            <div class="d-grid">
-                                <button class="btn btn-primary" id="startSynthesis">
-                                    <i class="bi bi-gear-fill"></i> 开始合成
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="col-lg-4">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="bi bi-list"></i> 合成进度</h5>
-                        </div>
-                        <div class="card-body">
-                            <div id="synthesisProgress">
-                                <div class="text-muted text-center">
-                                    <i class="bi bi-hourglass"></i><br>
-                                    等待开始合成...
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <!-- 数据合成功能已移除（前端） -->
 
         <!-- 评估分析模块 -->
         <div id="evaluation" class="tab-content" style="display: none;">

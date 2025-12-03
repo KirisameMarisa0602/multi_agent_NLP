@@ -181,10 +181,7 @@ class MultiAgentApp {
             });
         }
 
-        // 数据合成
-        document.getElementById('startSynthesis')?.addEventListener('click', () => {
-            this.startDataSynthesis();
-        });
+        // 数据合成功能已移除（前端）
 
         // 评估分析
         document.getElementById('startEvaluation')?.addEventListener('click', () => {
@@ -433,44 +430,7 @@ class MultiAgentApp {
         }
     }
 
-    async startDataSynthesis() {
-        const seedTexts = document.getElementById('seedTexts').value.trim();
-        if (!seedTexts) {
-            this.showAlert('请输入种子文本', 'warning');
-            return;
-        }
-
-        const requirements = document.getElementById('synthRequirements').value.trim();
-        const rounds = parseInt(document.getElementById('synthRounds').value);
-
-        try {
-            this.updateSynthesisProgress('正在启动合成任务...', 10);
-
-            const response = await fetch('/api/synthesize', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    seeds: seedTexts,
-                    requirements,
-                    rounds
-                })
-            });
-
-            const result = await response.json();
-            
-            if (result.status === 'success') {
-                this.currentTaskId = result.task_id;
-                this.updateSynthesisProgress('合成任务已启动，正在处理...', 20);
-                this.socket.emit('join_task', { task_id: this.currentTaskId });
-            } else {
-                throw new Error(result.message);
-            }
-        } catch (error) {
-            this.showAlert('启动合成失败: ' + error.message, 'error');
-        }
-    }
+    // 数据合成功能已移除（前端）
 
     async startEvaluation() {
         const cases = document.getElementById('evalCases').value.trim();
@@ -673,9 +633,7 @@ class MultiAgentApp {
         this.showAlert('任务完成！', 'success');
         
         // 根据任务类型更新相应的UI
-        if (taskData.type === 'synthesis') {
-            this.updateSynthesisProgress('合成完成', 100);
-        } else if (taskData.type === 'evaluation') {
+        if (taskData.type === 'evaluation') {
             this.displayEvaluationResults(taskData.result);
         }
     }
@@ -1095,19 +1053,7 @@ class MultiAgentApp {
         }
     }
 
-    updateSynthesisProgress(message, progress) {
-        const progressContainer = document.getElementById('synthesisProgress');
-        if (progressContainer) {
-            progressContainer.innerHTML = `
-                <div class="mb-2">
-                    <strong>${message}</strong>
-                </div>
-                <div class="progress mb-2">
-                    <div class="progress-bar" style="width: ${progress}%"></div>
-                </div>
-            `;
-        }
-    }
+    // 合成进度相关函数已移除（前端）
 
     showDistillationResult(message, outputPath) {
         const resultsContainer = document.getElementById('distillationResults');

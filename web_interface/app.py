@@ -47,21 +47,34 @@ from multi_agent_nlp_project import (
     parse_requirements,
     generate_html_report,
     build_hybrid_dual_agent_system,
+    get_dual_agent_system,  # 新增：使用延迟加载函数
 )
 
-# 根据环境变量自动决定是否启用混合模式 (学生模型 + 教师模型)
-_enable_hybrid_env = (
-    os.getenv('ENABLE_HYBRID') == '1' or
-    bool(os.getenv('STUDENT_BASE_MODEL')) or
-    os.getenv('FORCE_STUDENT_STUB') == '1'
-)
-try:
-    if _enable_hybrid_env:
-        web_dual_agent_system = build_hybrid_dual_agent_system()
-    else:
-        web_dual_agent_system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
-except Exception:
-    web_dual_agent_system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
+# 使用延迟加载机制，避免在应用启动时立即加载大型模型
+# 这样可以大幅减少启动时的内存占用
+_web_dual_agent_system = None
+
+def get_web_dual_agent_system():
+    """获取 Web 双 Agent 系统实例（延迟加载 + 单例模式）"""
+    global _web_dual_agent_system
+    if _web_dual_agent_system is None:
+        print("⏳ Web应用首次请求，正在加载双 Agent 系统...")
+        # 根据环境变量自动决定是否启用混合模式
+        _enable_hybrid_env = (
+            os.getenv('ENABLE_HYBRID') == '1' or
+            bool(os.getenv('STUDENT_BASE_MODEL')) or
+            os.getenv('FORCE_STUDENT_STUB') == '1'
+        )
+        try:
+            if _enable_hybrid_env:
+                _web_dual_agent_system = build_hybrid_dual_agent_system()
+            else:
+                _web_dual_agent_system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
+        except Exception as e:
+            print(f"⚠️ 模型加载失败: {e}，使用默认配置")
+            _web_dual_agent_system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
+        print("✅ Web 双 Agent 系统加载完成")
+    return _web_dual_agent_system
 
 
 def _describe_agent_models(system: DualAgentAcademicSystem) -> Dict[str, str]:
@@ -89,14 +102,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 在 Web 启动时输出一次当前 Agent A/B 使用的模型信息
-_model_info = _describe_agent_models(web_dual_agent_system)
-logger.info(
-    "Web DualAgent system ready | Agent A model=%s | Agent B model=%s | hybrid_env=%s",
-    _model_info["agent_a_model"],
-    _model_info["agent_b_model"],
-    _enable_hybrid_env,
-)
+# 模型信息将在首次请求时输出，避免启动时加载
+logger.info("🚀 Web 应用已启动（模型将在首次请求时加载）")
 
 # 创建Flask应用
 app = Flask(__name__,
@@ -182,7 +189,7 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
             task_id[:8], rounds, enable_tools, enable_memory,
         )
         # 每个任务再记录一次当前 Agent A/B 模型，便于排查混合模式配置
-        info = _describe_agent_models(web_dual_agent_system)
+        info = _describe_agent_models(get_web_dual_agent_system())
         logger.info(
             "[task %s] AgentA=%s | AgentB=%s",
             task_id[:8], info["agent_a_model"], info["agent_b_model"],
@@ -329,7 +336,7 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
                 return current_text, self.collaboration_log
 
         # 初始化实时智能体系统：复用已经构建好的 hybrid/单模型配置
-        system = RealTimeAgentSystem(web_dual_agent_system)
+        system = RealTimeAgentSystem(get_web_dual_agent_system())
 
         task_manager.update_task(task_id, progress=15, message='系统初始化完成，开始优化...')
 
@@ -381,7 +388,7 @@ def run_file_optimization_task(task_id: str, file_content: str, requirements: Li
 
         try:
             # 使用与文本优化相同的全局/混合系统配置，保持前后端一致
-            system = web_dual_agent_system
+            system = get_web_dual_agent_system()
             task_manager.update_task(task_id, progress=20)
 
             # 执行文件优化
@@ -418,43 +425,9 @@ def run_file_optimization_task(task_id: str, file_content: str, requirements: Li
 
 def run_synthesis_task(task_id: str, seeds: List[str], requirements: List[str], rounds: int = 3):
     """运行数据合成任务"""
-    try:
-        task_manager.update_task(task_id, status='running', progress=10)
-
-        # 使用与项目根目录一致的系统配置
-        system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
-
-        task_manager.update_task(task_id, progress=20)
-
-        # 执行数据合成（multi_agent_nlp_project.synthesize_dataset 默认写入项目根目录下的 data/）
-        output_path = system.synthesize_dataset(seeds, requirements, rounds)
-
-        # 标准化输出路径：统一转为 Path，并解析为绝对路径
-        # 这里不使用 __file__ 相对路径，而是依赖 synthesize_dataset 内部使用的项目根目录 data
-        if not isinstance(output_path, Path):
-            output_path = Path(output_path)
-        abs_output_path = output_path.resolve()
-
-        task_manager.update_task(
-            task_id,
-            status='completed',
-            progress=100,
-            result={
-                # 返回绝对路径，指向项目根目录下的 data/*.jsonl
-                'output_path': str(abs_output_path),
-                'seeds_count': len(seeds),
-                'requirements': requirements
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Synthesis task {task_id} failed: {e}")
-        logger.error(traceback.format_exc())
-        task_manager.update_task(
-            task_id,
-            status='failed',
-            error=str(e)
-        )
+    # 数据合成功能已移除（后端）
+    # 该函数保留为占位，以避免模块导入时找不到符号。
+    task_manager.update_task(task_id, status='failed', error='Data synthesis is disabled in this deployment')
 
 
 def run_evaluation_task(task_id: str, test_cases: List[tuple[str, List[str]]], rounds: int = 2):
@@ -618,44 +591,10 @@ def optimize_file():
 
 @app.route('/api/synthesize', methods=['POST'])
 def synthesize_data():
-    """数据合成API"""
-    try:
-        data = request.get_json()
-
-        seeds_text = data.get('seeds', '').strip()
-        seeds = [line.strip() for line in seeds_text.split('\n') if line.strip()]
-
-        if not seeds:
-            return jsonify({'status': 'error', 'message': '种子文本不能为空'}), 400
-
-        requirements_str = data.get('requirements', '学术表达提升,结构清晰,可读性增强')
-        rounds = int(data.get('rounds', 3))
-
-        requirements = parse_requirements(requirements_str, ['学术表达提升'])
-
-        # 创建任务
-        task_id = task_manager.create_task('synthesis', {
-            'seeds': seeds,
-            'requirements': requirements,
-            'rounds': rounds
-        })
-
-        # 启动后台任务
-        thread = threading.Thread(
-            target=run_synthesis_task,
-            args=(task_id, seeds, requirements, rounds)
-        )
-        thread.start()
-
-        return jsonify({
-            'status': 'success',
-            'task_id': task_id,
-            'message': '数据合成任务已启动'
-        })
-
-    except Exception as e:
-        logger.error(f"Data synthesis failed: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    """数据合成 API 已被禁用。前端与 API 已移除以节省部署空间。
+    若需要在命令行运行合成，请使用 `python multi_agent_nlp_project.py synthesize`。
+    """
+    return jsonify({'status': 'error', 'message': 'Data synthesis API is disabled on this server'}), 410
 
 
 @app.route('/api/evaluate', methods=['POST'])
